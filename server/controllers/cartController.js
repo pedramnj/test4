@@ -51,16 +51,14 @@ const removeFromCart = (req, res) => {
 };
 
 // Confirm reservation of the cart items
+
 const confirmReservation = (req, res) => {
   const { userId } = req.body;
 
-  // Start a transaction
   db.serialize(() => {
     db.run('BEGIN TRANSACTION;');
 
-    const getCartItemsQuery = `SELECT bags.id AS bag_id, establishment_id FROM bags 
-                               INNER JOIN carts ON bags.id = carts.bag_id 
-                               WHERE carts.user_id = ? AND DATE(bags.available_time) = DATE('now')`;
+    const getCartItemsQuery = `SELECT bag_id FROM carts WHERE user_id = ?`;
     db.all(getCartItemsQuery, [userId], (err, rows) => {
       if (err) {
         db.run('ROLLBACK;');
@@ -68,19 +66,6 @@ const confirmReservation = (req, res) => {
         return;
       }
 
-      // Check if the user is reserving more than one bag from the same establishment
-      const establishmentCount = rows.reduce((acc, row) => {
-        acc[row.establishment_id] = (acc[row.establishment_id] || 0) + 1;
-        return acc;
-      }, {});
-
-      if (Object.values(establishmentCount).some(count => count > 1)) {
-        db.run('ROLLBACK;');
-        res.status(400).json({ message: 'Cannot reserve more than one bag per establishment per day.' });
-        return;
-      }
-
-      // Reserve each bag in the cart
       rows.forEach(row => {
         const reserveBagQuery = `UPDATE bags SET reserved = 1 WHERE id = ?`;
         db.run(reserveBagQuery, [row.bag_id], (updateErr) => {
@@ -89,10 +74,18 @@ const confirmReservation = (req, res) => {
             res.status(500).json({ error: updateErr.message });
             return;
           }
+
+          const insertReservationQuery = `INSERT INTO reservations (user_id, bag_id) VALUES (?, ?)`;
+          db.run(insertReservationQuery, [userId, row.bag_id], (insertErr) => {
+            if (insertErr) {
+              db.run('ROLLBACK;');
+              res.status(500).json({ error: insertErr.message });
+              return;
+            }
+          });
         });
       });
 
-      // Clear the cart after reservation
       const clearCartQuery = `DELETE FROM carts WHERE user_id = ?`;
       db.run(clearCartQuery, [userId], (clearErr) => {
         if (clearErr) {
@@ -106,14 +99,20 @@ const confirmReservation = (req, res) => {
     });
   });
 };
+
+
 // Get the user's cart items
+
 const fetchCart = (req, res) => {
-  const { userId } = req.params; // Assuming you're passing userId as a parameter
+  const { userId } = req.params;
 
   const fetchCartQuery = `
-    SELECT carts.bag_id, bags.type, bags.size, bags.price
+    SELECT carts.bag_id, bags.type, bags.size, bags.price, bags.available_time,
+           food_items.id as foodItemId, food_items.name, food_items.quantity
     FROM carts
     JOIN bags ON carts.bag_id = bags.id
+    LEFT JOIN bag_food_item ON bags.id = bag_food_item.bag_id
+    LEFT JOIN food_items ON bag_food_item.food_item_id = food_items.id
     WHERE carts.user_id = ?`;
 
   db.all(fetchCartQuery, [userId], (err, rows) => {
@@ -121,13 +120,112 @@ const fetchCart = (req, res) => {
       res.status(500).json({ error: err.message });
       return;
     }
-    res.json({ cartItems: rows });
+
+    // Process rows to group food items under each bag
+    let cartItems = {};
+    rows.forEach(row => {
+      if (!cartItems[row.bag_id]) {
+        cartItems[row.bag_id] = {
+          id: row.bag_id,
+          type: row.type,
+          size: row.size,
+          price: row.price,
+          availableTime: row.available_time,
+          foodItems: []
+        };
+      }
+      if (row.foodItemId) {
+        cartItems[row.bag_id].foodItems.push({
+          id: row.foodItemId,
+          name: row.name,
+          quantity: row.quantity
+        });
+      }
+    });
+    
+    res.json({ cartItems: Object.values(cartItems) });
   });
 };
 
+
+const updateCartItemQuantity = (req, res) => {
+  const { userId, bagId, itemId, newQuantity } = req.body;
+
+  //  `itemId` refers to the `id` of a food item in the `food_items` table
+  const updateItemQuery = `UPDATE food_items SET quantity = ? WHERE id = ?`;
+
+  db.run(updateItemQuery, [newQuantity, itemId], (err) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ message: 'Item quantity updated successfully.' });
+  });
+};
+
+
+
+const cancelReservation = (req, res) => {
+  const { userId, bagId } = req.body;
+
+  // Start a transaction
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION;');
+
+    // Update the reserved status in the bags table
+    const updateBagQuery = `UPDATE bags SET reserved = 0 WHERE id = ?`;
+    db.run(updateBagQuery, [bagId], (err) => {
+      if (err) {
+        db.run('ROLLBACK;');
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      // Delete the reservation record
+      const deleteReservationQuery = `DELETE FROM reservations WHERE user_id = ? AND bag_id = ?`;
+      db.run(deleteReservationQuery, [userId, bagId], (deleteErr) => {
+        if (deleteErr) {
+          db.run('ROLLBACK;');
+          res.status(500).json({ error: deleteErr.message });
+          return;
+        }
+
+        db.run('COMMIT;');
+        res.json({ message: 'Reservation cancelled successfully.' });
+      });
+    });
+  });
+};
+
+
+const fetchReservedBags = (req, res) => {
+  const { userId } = req.params;
+
+  // Adjusted query to join the reservations and bags tables
+  const query = `
+    SELECT bags.* FROM bags 
+    INNER JOIN reservations ON bags.id = reservations.bag_id 
+    WHERE reservations.user_id = ? AND bags.reserved = 1`;
+
+  db.all(query, [userId], (err, bags) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ reservedBags: bags });
+  });
+};
+
+
+
+
 module.exports = {
+  cancelReservation,
+  fetchReservedBags,
   fetchCart,
   addToCart,
   removeFromCart,
-  confirmReservation
+  confirmReservation,
+  updateCartItemQuantity 
+
 };

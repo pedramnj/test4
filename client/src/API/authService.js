@@ -14,9 +14,9 @@ const login = async (username, password) => {
     }
 
     const data = await response.json();
-    return data; // This could include the user token and details
+    return data; 
   } catch (error) {
-    // Handle or throw the error depending on your error handling strategy
+    
     throw error;
   }
 };
@@ -30,14 +30,14 @@ const register = async (username, password, email) => {
     });
 
     if (!response.ok) {
-      // Handle different response statuses here
+      
       throw new Error('Registration failed');
     }
 
     const data = await response.json();
-    return data; // This could include the user token and details
+    return data; 
   } catch (error) {
-    // Handle or throw the error
+    
     throw error;
   }
 };

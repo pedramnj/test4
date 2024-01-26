@@ -1,5 +1,6 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import { fetchCartItems } from './cartService'; // Ensure this function is implemented
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { fetchCartItems } from '../API/cartService';
+import { useUser } from '../API/UserContext'; 
 
 const CartContext = createContext();
 
@@ -7,31 +8,28 @@ export const useCart = () => useContext(CartContext);
 
 export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const { user } = useUser(); // Use the user context to get the current user
 
-  // Function to load cart items from the backend
   const loadCartItems = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetchCartItems();
-      setCartItems(response.cartItems || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+    if (user && user.id) { // Check if user is logged in and has an id
+      try {
+        const items = await fetchCartItems(user.id); // Fetch cart items for the logged-in user
+        setCartItems(items.cartItems || []);
+      } catch (error) {
+        //no error handeling!
+      }
+    } else {
+      setCartItems([]); // Reset cart items if no user is logged in
     }
   };
 
   useEffect(() => {
     loadCartItems();
-  }, []);
+  }, [user]); // Dependency on user to re-fetch when the user logs in or out
 
-  // Provide functions to manipulate cart items if needed
-  // Example: addToCart, removeFromCart
-
+  // Context value and provider
   return (
-    <CartContext.Provider value={{ cartItems, isLoading, error, loadCartItems }}>
+    <CartContext.Provider value={{ cartItems, loadCartItems }}>
       {children}
     </CartContext.Provider>
   );

@@ -1,8 +1,14 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom'; 
-import { useUser } from '../API/UserContext'; 
-import { useCart } from '../API/cartContext'; // Ensure this import path is correct
-import { FaShoppingCart } from 'react-icons/fa'; // Importing a cart icon
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useUser } from '../API/UserContext';
+import { useCart } from '../API/cartContext';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import MenuIcon from '@mui/icons-material/Menu';
 
 const Navigation = () => {
   const { user, logoutUser } = useUser();
@@ -15,39 +21,43 @@ const Navigation = () => {
   };
 
   return (
-    <nav className="navbar navbar-expand-lg navbar-light bg-light">
-      <div className="container-fluid">
-        <Link className="navbar-brand" to="/">Food Rescue</Link>
-        <div className="collapse navbar-collapse">
-          <ul className="navbar-nav me-auto mb-2 mb-lg-0">
-            <li className="nav-item">
-              <Link className="nav-link" to="/">Home</Link>
-            </li>
-            {/* Additional navigation items here */}
-          </ul>
-          <div className="d-flex align-items-center">
-            {user ? (
-              <>
-                <Link to="/cart" className="nav-item nav-link">
-                  <FaShoppingCart />
-                  {cartItems && cartItems.length > 0 && (
-                    <span className="badge bg-secondary ms-1">{cartItems.length}</span>
-                  )}
-                </Link>
-                <span className="navbar-text me-3">
-                  Welcome, {user.username}!
-                </span>
-                <button className="btn btn-outline-danger" onClick={handleLogout}>
-                  Logout
-                </button>
-              </>
-            ) : (
-              <Link className="btn btn-outline-success" to="/login">Login</Link>
-            )}
-          </div>
-        </div>
-      </div>
-    </nav>
+    <AppBar position="static">
+      <Toolbar>
+        <IconButton edge="start" color="inherit" aria-label="menu" sx={{ mr: 2 }}>
+          <MenuIcon />
+        </IconButton>
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <RouterLink to="/" style={{ color: 'inherit', textDecoration: 'none' }}>
+            Food Rescue
+          </RouterLink>
+        </Typography>
+        <Button color="inherit" component={RouterLink} to="/">
+          Home
+        </Button>
+        {user && (
+          <Button color="inherit" component={RouterLink} to="/reserved-bags">
+            My Orders
+          </Button>
+        )}
+        {user ? (
+          <>
+            <IconButton color="inherit" component={RouterLink} to="/cart" aria-label="View Cart">
+              <ShoppingCartIcon />
+            </IconButton>
+            <Typography variant="subtitle1" color="inherit" sx={{ mx: 2 }}>
+              Welcome, {user.username}!
+            </Typography>
+            <Button color="inherit" onClick={handleLogout}>
+              Logout
+            </Button>
+          </>
+        ) : (
+          <Button color="inherit" component={RouterLink} to="/login">
+            Login
+          </Button>
+        )}
+      </Toolbar>
+    </AppBar>
   );
 };
 
